@@ -2,6 +2,18 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Visitor = require('../models/Visitor');
+const { 
+    sendTelegramNotification, 
+    sendNewUserNotification,
+    getVisitorData 
+} = require('../utils/telegram');
+const { 
+    validateUserData, 
+    validateEmail, 
+    validatePassword,
+    sanitizeText 
+} = require('../utils/validation');
+
 const router = express.Router();
 
 // Middleware untuk verifikasi JWT
@@ -23,22 +35,42 @@ const authMiddleware = async (req, res, next) => {
         req.user = user;
         next();
     } catch (error) {
+        console.error('Auth middleware error:', error);
         res.status(401).json({ error: 'Token tidak valid' });
+    }
+};
+
+// Optional auth middleware (untuk route yang tidak wajib login)
+const optionalAuthMiddleware = async (req, res, next) => {
+    try {
+        const token = req.header('Authorization')?.replace('Bearer ', '');
+        
+        if (token) {
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            const user = await User.findById(decoded.userId).select('-password');
+            req.user = user;
+        }
+        
+        next();
+    } catch (error) {
+        // Jika token tidak valid, lanjut tanpa user
+        next();
     }
 };
 
 // Register endpoint
 router.post('/register', async (req, res) => {
     try {
-        const { nama, email, password } = req.body;
+        let { nama, email, password } = req.body;
 
-        // Validasi input
-        if (!nama || !email || !password) {
-            return res.status(400).json({ error: 'Semua field harus diisi' });
-        }
+        // Sanitize input
+        nama = sanitizeText(nama);
+        email = sanitizeText(email).toLowerCase();
 
-        if (password.length < 6) {
-            return res.status(400).json({ error: 'Password minimal 6 karakter' });
+        // Validasi input menggunakan utility function
+        const validation = validateUserData(nama, email, password);
+        if (!validation.isValid) {
+            return res.status(400).json({ error: validation.errors.join(', ') });
         }
 
         // Check if user already exists
@@ -57,30 +89,38 @@ router.post('/register', async (req, res) => {
         await newUser.save();
 
         // Track visitor data dan kirim notifikasi
-        const visitorData = await getVisitorData(req);
+        const visitorData = getVisitorData(req);
         await Visitor.create(visitorData);
         
-        await sendTelegramNotification(`
-📝 USER BARU DAFTAR
-
-👤 Nama: ${nama}
-📧 Email: ${email}
-📅 Tanggal: ${new Date().toLocaleDateString('id-ID')}
-🌐 IP: ${visitorData.ip}
-📱 Device: ${visitorData.platform}
-🕒 Waktu: ${new Date().toLocaleString('id-ID')}
-        `);
+        // Kirim notifikasi Telegram
+        await sendNewUserNotification(
+            { nama, email },
+            visitorData
+        );
 
         res.status(201).json({ 
             message: 'Registrasi berhasil! Silakan login.',
             user: {
                 id: newUser._id,
                 nama: newUser.nama,
-                email: newUser.email
+                email: newUser.email,
+                tanggalDaftar: newUser.tanggalDaftar
             }
         });
     } catch (error) {
         console.error('Registration error:', error);
+        
+        // Handle duplicate key error
+        if (error.code === 11000) {
+            return res.status(400).json({ error: 'Email sudah terdaftar' });
+        }
+        
+        // Handle validation errors
+        if (error.name === 'ValidationError') {
+            const errors = Object.values(error.errors).map(err => err.message);
+            return res.status(400).json({ error: errors.join(', ') });
+        }
+        
         res.status(500).json({ error: 'Terjadi kesalahan server' });
     }
 });
@@ -88,11 +128,18 @@ router.post('/register', async (req, res) => {
 // Login endpoint
 router.post('/login', async (req, res) => {
     try {
-        const { email, password } = req.body;
+        let { email, password } = req.body;
+
+        // Sanitize input
+        email = sanitizeText(email).toLowerCase();
 
         // Validasi input
         if (!email || !password) {
             return res.status(400).json({ error: 'Email dan password harus diisi' });
+        }
+
+        if (!validateEmail(email)) {
+            return res.status(400).json({ error: 'Format email tidak valid' });
         }
 
         // Find user
@@ -117,12 +164,19 @@ router.post('/login', async (req, res) => {
             { expiresIn: '30d' }
         );
 
+        // Update last login
+        user.terakhirLogin = new Date();
+        await user.save();
+
         res.json({
+            message: 'Login berhasil!',
             token,
             user: {
                 id: user._id,
                 nama: user.nama,
-                email: user.email
+                email: user.email,
+                tanggalDaftar: user.tanggalDaftar,
+                terakhirLogin: user.terakhirLogin
             }
         });
     } catch (error) {
@@ -139,7 +193,9 @@ router.get('/me', authMiddleware, async (req, res) => {
                 id: req.user._id,
                 nama: req.user.nama,
                 email: req.user.email,
-                tanggalDaftar: req.user.tanggalDaftar
+                tanggalDaftar: req.user.tanggalDaftar,
+                terakhirLogin: req.user.terakhirLogin,
+                role: req.user.role
             }
         });
     } catch (error) {
@@ -148,68 +204,239 @@ router.get('/me', authMiddleware, async (req, res) => {
     }
 });
 
-// Helper function to get visitor data
-async function getVisitorData(req) {
-    const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
-    const userAgent = req.headers['user-agent'];
-    
-    return {
-        ip,
-        userAgent,
-        platform: getPlatform(userAgent),
-        browser: getBrowser(userAgent),
-        language: req.headers['accept-language'] || 'Unknown',
-        path: req.headers['referer'] || '/'
-    };
-}
-
-// Helper functions
-function getPlatform(userAgent) {
-    if (userAgent.includes('Android')) return 'Android';
-    if (userAgent.includes('iPhone') || userAgent.includes('iPad')) return 'iOS';
-    if (userAgent.includes('Windows')) return 'Windows';
-    if (userAgent.includes('Mac')) return 'MacOS';
-    if (userAgent.includes('Linux')) return 'Linux';
-    return 'Unknown';
-}
-
-function getBrowser(userAgent) {
-    if (userAgent.includes('Chrome')) return 'Chrome';
-    if (userAgent.includes('Firefox')) return 'Firefox';
-    if (userAgent.includes('Safari')) return 'Safari';
-    if (userAgent.includes('Edge')) return 'Edge';
-    return 'Unknown';
-}
-
-// Helper function to send Telegram notification
-async function sendTelegramNotification(message) {
+// Update user profile
+router.put('/profile', authMiddleware, async (req, res) => {
     try {
-        const botToken = process.env.TELEGRAM_BOT_TOKEN;
-        const chatId = process.env.TELEGRAM_CHAT_ID;
-        
-        if (!botToken || !chatId) {
-            console.log('Telegram credentials not set');
-            return;
+        let { nama } = req.body;
+
+        // Sanitize input
+        nama = sanitizeText(nama);
+
+        if (!nama || nama.trim().length === 0) {
+            return res.status(400).json({ error: 'Nama harus diisi' });
         }
 
-        const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
+        if (nama.length > 50) {
+            return res.status(400).json({ error: 'Nama maksimal 50 karakter' });
+        }
+
+        const updatedUser = await User.findByIdAndUpdate(
+            req.user._id,
+            { nama },
+            { new: true, runValidators: true }
+        ).select('-password');
+
+        res.json({
+            message: 'Profile berhasil diupdate',
+            user: updatedUser
+        });
+    } catch (error) {
+        console.error('Update profile error:', error);
+        res.status(500).json({ error: 'Terjadi kesalahan server' });
+    }
+});
+
+// Change password
+router.put('/change-password', authMiddleware, async (req, res) => {
+    try {
+        const { currentPassword, newPassword } = req.body;
+
+        if (!currentPassword || !newPassword) {
+            return res.status(400).json({ error: 'Password lama dan baru harus diisi' });
+        }
+
+        if (!validatePassword(newPassword)) {
+            return res.status(400).json({ 
+                error: 'Password baru minimal 6 karakter dan mengandung huruf dan angka' 
+            });
+        }
+
+        // Verify current password
+        const user = await User.findById(req.user._id);
+        const isCurrentPasswordValid = await user.comparePassword(currentPassword);
+        
+        if (!isCurrentPasswordValid) {
+            return res.status(400).json({ error: 'Password lama tidak sesuai' });
+        }
+
+        // Update password
+        user.password = newPassword;
+        await user.save();
+
+        res.json({ message: 'Password berhasil diubah' });
+    } catch (error) {
+        console.error('Change password error:', error);
+        res.status(500).json({ error: 'Terjadi kesalahan server' });
+    }
+});
+
+// Get user statistics
+router.get('/stats', authMiddleware, async (req, res) => {
+    try {
+        const Puisi = require('../models/Puisi');
+        
+        // Get puisi statistics
+        const totalPuisi = await Puisi.countDocuments({ penulis: req.user._id });
+        const totalLikes = await Puisi.aggregate([
+            { $match: { penulis: req.user._id } },
+            { $group: { _id: null, total: { $sum: '$jumlahSuka' } } }
+        ]);
+        
+        const puisiByKategori = await Puisi.aggregate([
+            { $match: { penulis: req.user._id } },
+            { $group: { _id: '$kategori', count: { $sum: 1 } } }
+        ]);
+
+        // Get recent activity
+        const recentPuisi = await Puisi.find({ penulis: req.user._id })
+            .sort({ createdAt: -1 })
+            .limit(5)
+            .select('judul jumlahSuka createdAt')
+            .lean();
+
+        res.json({
+            statistics: {
+                totalPuisi,
+                totalLikes: totalLikes[0]?.total || 0,
+                puisiByKategori,
+                accountAge: Math.floor((new Date() - req.user.tanggalDaftar) / (1000 * 60 * 60 * 24))
             },
-            body: JSON.stringify({
-                chat_id: chatId,
-                text: message,
-                parse_mode: 'HTML'
-            })
+            recentActivity: recentPuisi
+        });
+    } catch (error) {
+        console.error('Get user stats error:', error);
+        res.status(500).json({ error: 'Terjadi kesalahan server' });
+    }
+});
+
+// Check email availability
+router.get('/check-email', async (req, res) => {
+    try {
+        const { email } = req.query;
+
+        if (!email) {
+            return res.status(400).json({ error: 'Email harus diisi' });
+        }
+
+        if (!validateEmail(email)) {
+            return res.status(400).json({ error: 'Format email tidak valid' });
+        }
+
+        const existingUser = await User.findOne({ email: email.toLowerCase() });
+        
+        res.json({
+            available: !existingUser,
+            email: email
+        });
+    } catch (error) {
+        console.error('Check email error:', error);
+        res.status(500).json({ error: 'Terjadi kesalahan server' });
+    }
+});
+
+// Forgot password request
+router.post('/forgot-password', async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        if (!email) {
+            return res.status(400).json({ error: 'Email harus diisi' });
+        }
+
+        if (!validateEmail(email)) {
+            return res.status(400).json({ error: 'Format email tidak valid' });
+        }
+
+        const user = await User.findOne({ email: email.toLowerCase() });
+        
+        // Always return success to prevent email enumeration
+        res.json({ 
+            message: 'Jika email terdaftar, instruksi reset password akan dikirim' 
         });
 
-        if (!response.ok) {
-            console.error('Failed to send Telegram notification');
+        // In production, you would:
+        // 1. Generate reset token
+        // 2. Save token to database with expiry
+        // 3. Send email with reset link
+        if (user) {
+            console.log(`Password reset requested for: ${email}`);
+            // await sendPasswordResetEmail(user.email, resetToken);
         }
-    } catch (error) {
-        console.error('Telegram notification error:', error);
-    }
-}
 
-module.exports = { router, authMiddleware };
+    } catch (error) {
+        console.error('Forgot password error:', error);
+        res.status(500).json({ error: 'Terjadi kesalahan server' });
+    }
+});
+
+// Verify token (untuk check token validity di frontend)
+router.get('/verify-token', authMiddleware, async (req, res) => {
+    try {
+        res.json({
+            valid: true,
+            user: {
+                id: req.user._id,
+                nama: req.user.nama,
+                email: req.user.email
+            }
+        });
+    } catch (error) {
+        res.status(401).json({ valid: false, error: 'Token tidak valid' });
+    }
+});
+
+// Logout (client-side, tapi bisa tambahkan blacklist token jika needed)
+router.post('/logout', authMiddleware, async (req, res) => {
+    try {
+        // In production, you might want to implement token blacklisting
+        // For now, we'll just return success and let client remove token
+        
+        res.json({ 
+            message: 'Logout berhasil',
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('Logout error:', error);
+        res.status(500).json({ error: 'Terjadi kesalahan server' });
+    }
+});
+
+// Delete account
+router.delete('/account', authMiddleware, async (req, res) => {
+    try {
+        const { confirmation } = req.body;
+
+        if (confirmation !== 'HAPUS AKUN SAYA') {
+            return res.status(400).json({ 
+                error: 'Konfirmasi tidak sesuai. Ketik "HAPUS AKUN SAYA" untuk menghapus akun.' 
+            });
+        }
+
+        const Puisi = require('../models/Puisi');
+        
+        // Delete user's puisi
+        await Puisi.deleteMany({ penulis: req.user._id });
+        
+        // Delete user
+        await User.findByIdAndDelete(req.user._id);
+
+        // Send notification
+        await sendTelegramNotification(`
+🗑️ AKUN DIHAPUS
+
+👤 Nama: ${req.user.nama}
+📧 Email: ${req.user.email}
+🕒 Waktu: ${new Date().toLocaleString('id-ID')}
+        `);
+
+        res.json({ 
+            message: 'Akun berhasil dihapus',
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('Delete account error:', error);
+        res.status(500).json({ error: 'Terjadi kesalahan server' });
+    }
+});
+
+module.exports = { router, authMiddleware, optionalAuthMiddleware };
