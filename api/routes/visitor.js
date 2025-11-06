@@ -1,6 +1,7 @@
 const express = require('express');
 const Visitor = require('../models/Visitor');
 const router = express.Router();
+const VisitorController = require('../controllers/VisitorController');
 
 // Track visitor
 router.get('/', async (req, res) => {
@@ -87,5 +88,9 @@ function getBrowser(userAgent) {
     if (userAgent.includes('Opera')) return 'Opera';
     return 'Unknown';
 }
+// Public routes
+router.get('/', VisitorController.trackVisitor);
+router.get('/stats', VisitorController.getVisitorStats);
+router.get('/realtime', VisitorController.getRealtimeStats);
 
 module.exports = router;
