@@ -1,0 +1,8 @@
+# Ignore everything except public and api
+*
+!public
+!public/**
+!api
+!api/**
+!package.json
+!vercel.json
