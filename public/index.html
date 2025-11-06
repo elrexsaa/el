@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PuisiKu - Galeri Puisi 2025</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-logo">
+                <i class="fas fa-pen-fancy"></i>
+                <span>PuisiKu</span>
+            </div>
+            <div class="nav-menu" id="navMenu">
+                <a href="#home" class="nav-link">Beranda</a>
+                <a href="#puisi" class="nav-link">Puisi</a>
+                <a href="#tentang" class="nav-link">Tentang</a>
+                <div class="nav-auth" id="navAuth">
+                    <button class="btn-login" onclick="showLoginModal()">Masuk</button>
+                    <button class="btn-register" onclick="showRegisterModal()">Daftar</button>
+                </div>
+                <div class="nav-user" id="navUser" style="display: none;">
+                    <span id="userName"></span>
+                    <button class="btn-add-puisi" onclick="showAddPuisiModal()">
+                        <i class="fas fa-plus"></i> Puisi Baru
+                    </button>
+                    <button class="btn-logout" onclick="logout()">Keluar</button>
+                </div>
+            </div>
+            <div class="nav-toggle" id="navToggle">
+                <span class="bar"></span>
+                <span class="bar"></span>
+                <span class="bar"></span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section id="home" class="hero">
+        <div class="hero-content">
+            <h1 class="hero-title">Temukan Keindahan dalam Setiap Kata</h1>
+            <p class="hero-subtitle">Kumpulan puisi terbaik dari para pecinta sastra</p>
+            <div class="hero-actions">
+                <button class="btn-primary" onclick="scrollToPuisi()">Jelajahi Puisi</button>
+                <button class="btn-secondary" onclick="showRegisterModal()">Bergabung</button>
+            </div>
+        </div>
+        <div class="hero-background">
+            <div class="floating-elements">
+                <div class="floating-element">✒️</div>
+                <div class="floating-element">📖</div>
+                <div class="floating-element">✨</div>
+                <div class="floating-element">💫</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Puisi Section -->
+    <section id="puisi" class="puisi-section">
+        <div class="container">
+            <h2 class="section-title">Koleksi Puisi</h2>
+            <div class="puisi-filters">
+                <button class="filter-btn active" data-filter="all">Semua</button>
+                <button class="filter-btn" data-filter="cinta">Cinta</button>
+                <button class="filter-btn" data-filter="alam">Alam</button>
+                <button class="filter-btn" data-filter="kehidupan">Kehidupan</button>
+            </div>
+            <div class="puisi-grid" id="puisiGrid">
+                <!-- Puisi items will be loaded here -->
+            </div>
+        </div>
+    </section>
+
+    <!-- About Section -->
+    <section id="tentang" class="about-section">
+        <div class="container">
+            <h2 class="section-title">Tentang PuisiKu</h2>
+            <div class="about-content">
+                <div class="about-text">
+                    <p>PuisiKu adalah platform digital yang menghadirkan keindahan puisi dalam bentuk modern dan interaktif. Kami percaya bahwa setiap kata memiliki kekuatan untuk menyentuh hati.</p>
+                    <div class="features">
+                        <div class="feature">
+                            <i class="fas fa-music"></i>
+                            <h3>Musik Pendamping</h3>
+                            <p>Nikmati puisi dengan iringan musik yang sesuai</p>
+                        </div>
+                        <div class="feature">
+                            <i class="fas fa-share-alt"></i>
+                            <h3>Berbagi Inspirasi</h3>
+                            <p>Bagikan puisi favorit ke media sosial</p>
+                        </div>
+                        <div class="feature">
+                            <i class="fas fa-image"></i>
+                            <h3>Gambar Puisi</h3>
+                            <p>Simpan puisi dalam bentuk gambar yang indah</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h3>PuisiKu</h3>
+                    <p>Menghadirkan keindahan puisi untuk semua</p>
+                </div>
+                <div class="footer-section">
+                    <h4>Tautan Cepat</h4>
+                    <a href="#home">Beranda</a>
+                    <a href="#puisi">Puisi</a>
+                    <a href="#tentang">Tentang</a>
+                </div>
+                <div class="footer-section">
+                    <h4>Kontak</h4>
+                    <p>info@puisiku.com</p>
+                    <div class="social-links">
+                        <a href="#"><i class="fab fa-instagram"></i></a>
+                        <a href="#"><i class="fab fa-twitter"></i></a>
+                        <a href="#"><i class="fab fa-facebook"></i></a>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2024 PuisiKu. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Modals -->
+    <div id="loginModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('loginModal')">&times;</span>
+            <h2>Masuk ke Akun Anda</h2>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="loginEmail" required>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="loginPassword" required>
+                </div>
+                <button type="submit" class="btn-primary">Masuk</button>
+            </form>
+            <p>Belum punya akun? <a href="#" onclick="showRegisterModal()">Daftar di sini</a></p>
+        </div>
+    </div>
+
+    <div id="registerModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('registerModal')">&times;</span>
+            <h2>Buat Akun Baru</h2>
+            <form id="registerForm">
+                <div class="form-group">
+                    <label>Nama Lengkap</label>
+                    <input type="text" id="registerName" required>
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="registerEmail" required>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="registerPassword" required>
+                </div>
+                <button type="submit" class="btn-primary">Daftar</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="addPuisiModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('addPuisiModal')">&times;</span>
+            <h2>Tambah Puisi Baru</h2>
+            <form id="addPuisiForm">
+                <div class="form-group">
+                    <label>Judul Puisi</label>
+                    <input type="text" id="puisiTitle" required>
+                </div>
+                <div class="form-group">
+                    <label>Konten Puisi</label>
+                    <textarea id="puisiContent" rows="10" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Kategori</label>
+                    <select id="puisiCategory" required>
+                        <option value="cinta">Cinta</option>
+                        <option value="alam">Alam</option>
+                        <option value="kehidupan">Kehidupan</option>
+                        <option value="lainnya">Lainnya</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>URL Musik (opsional)</label>
+                    <input type="url" id="puisiMusic" placeholder="https://">
+                </div>
+                <button type="submit" class="btn-primary">Publikasikan Puisi</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Music Player -->
+    <div class="music-player" id="musicPlayer">
+        <div class="music-info">
+            <span id="nowPlaying">Tidak ada musik</span>
+        </div>
+        <div class="music-controls">
+            <button id="prevBtn"><i class="fas fa-backward"></i></button>
+            <button id="playBtn"><i class="fas fa-play"></i></button>
+            <button id="nextBtn"><i class="fas fa-forward"></i></button>
+            <button id="closeMusic"><i class="fas fa-times"></i></button>
+        </div>
+        <audio id="audioPlayer"></audio>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
