@@ -39,6 +39,10 @@ const puisiSchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
+    jumlahDilihat: {
+        type: Number,
+        default: 0
+    },
     tanggal: {
         type: Date,
         default: Date.now
@@ -55,5 +59,21 @@ const puisiSchema = new mongoose.Schema({
 // Index untuk pencarian
 puisiSchema.index({ judul: 'text', konten: 'text' });
 puisiSchema.index({ kategori: 1, tanggal: -1 });
+puisiSchema.index({ penulis: 1, createdAt: -1 });
+puisiSchema.index({ jumlahSuka: -1 });
+puisiSchema.index({ status: 1 });
+
+// Virtual untuk excerpt
+puisiSchema.virtual('excerpt').get(function() {
+    return this.konten.length > 150 
+        ? this.konten.substring(0, 150) + '...' 
+        : this.konten;
+});
+
+// Method untuk increment views
+puisiSchema.methods.incrementViews = function() {
+    this.jumlahDilihat += 1;
+    return this.save();
+};
 
 module.exports = mongoose.model('Puisi', puisiSchema);
